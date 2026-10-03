@@ -1,0 +1,96 @@
+name: Build Android APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Put the uploaded files into their folders
+        run: |
+          mkdir -p src assets android-extras
+          for f in app.js backend.js native.js style.css index.html; do
+            if [ -f "$f" ]; then mv -f "$f" src/; fi
+          done
+          for f in icon-only.png icon-foreground.png icon-background.png splash.png splash-dark.png; do
+            if [ -f "$f" ]; then mv -f "$f" assets/; fi
+          done
+          if [ -f debug.keystore ]; then mv -f debug.keystore android-extras/; fi
+          missing=""
+          for f in package.json package-lock.json build.mjs capacitor.config.json src/app.js src/backend.js src/native.js src/style.css src/index.html assets/icon-only.png assets/icon-foreground.png assets/icon-background.png assets/splash.png assets/splash-dark.png android-extras/debug.keystore; do
+            if [ ! -f "$f" ]; then missing="$missing $(basename $f)"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::These files are missing from your repository. Upload them and try again:$missing"
+            exit 1
+          fi
+          echo "All files found."
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Build the app screens
+        run: npm run build
+
+      - name: Create the Android project
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android --iconBackgroundColor '#0E5A53' --iconBackgroundColorDark '#0E5A53' --splashBackgroundColor '#0E5A53' --splashBackgroundColorDark '#0D1413'
+          npx cap sync android
+
+      - name: Set the version number
+        run: |
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+
+      - name: Use the fixed signing key (lets new versions install over old ones)
+        run: |
+          mkdir -p ~/.android
+          cp android-extras/debug.keystore ~/.android/debug.keystore
+
+      - name: Build the APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk PropertyDesk.apk
+
+      - name: Keep a copy on the run page
+        uses: actions/upload-artifact@v4
+        with:
+          name: PropertyDesk-apk
+          path: PropertyDesk.apk
+
+      - name: Publish to Releases (download link for your phone)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest PropertyDesk.apk \
+            --title "Property Desk (build ${{ github.run_number }})" \
+            --notes "On your Android phone, tap PropertyDesk.apk below to download it, then open it to install or update. Your data is kept in the cloud, so updating never deletes it." \
+            --target "${{ github.sha }}" --latest

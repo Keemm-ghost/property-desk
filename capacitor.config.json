@@ -1,0 +1,16 @@
+{
+  "appId": "com.propertydesk.owner",
+  "appName": "Property Desk",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native"
+    },
+    "LocalNotifications": {
+      "iconColor": "#0E5A53"
+    }
+  }
+}
