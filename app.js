@@ -25,7 +25,8 @@ const ICONS={
  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
  plus:'<path d="M12 5v14M5 12h14"/>',
  close:'<path d="M6 6l12 12M18 6L6 18"/>',
- back:'<path d="M15 5l-7 7 7 7"/>'
+ back:'<path d="M15 5l-7 7 7 7"/>',
+ unit:'<rect x="6" y="3" width="12" height="18" rx="1.5"/><circle cx="14.5" cy="12.5" r="1"/>'
 };
 const ic=(n,cls='i')=>`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
 const TABS=[['home','Dashboard'],['props','Properties'],['contracts','Contracts'],['payments','Payments'],['reports','Reports']];
@@ -58,7 +59,7 @@ function daysText(d){if(d===0)return 'Today';if(d===1)return 'Tomorrow';if(d===-
 /* ---------- state ---------- */
 let T=todayStr();
 const S={props:[],contracts:[],settings:{currency:'AED',remindDays:14},tab:'home',dbState:'boot',canWrite:true,user:null,cloudErr:'',offline:false,
- f:{pq:'',ptype:'all',pocc:'all',pview:'props',utype:'all',cq:'',ckind:'all',cstat:'all',yq:'',ystat:'overdue',ymeth:'all',yfrom:'',yto:'',rep:'monthly',ryear:Number(T.slice(0,4))},
+ f:{pq:'',ptype:'all',pocc:'all',pview:'props',utype:'all',cq:'',ckind:'all',cstat:'all',yq:'',ystat:'all',ymeth:'all',yfrom:'',yto:'',rep:'monthly',ryear:Number(T.slice(0,4))},
  sheet:null,draft:null};
 let api=null,gotP=false,gotC=false,D=null,unsubs=[];
 try{const t=localStorage.getItem('pd_tab');if(t&&TABS.some(x=>x[0]===t))S.tab=t;}catch(e){}
@@ -120,7 +121,9 @@ function render(){
   const fn={home:vHome,props:vProps,contracts:vContracts,payments:vPayments,reports:vReports}[S.tab];
   v.innerHTML=cloudBanner()+fn();
   const fab={props:['newProp','Add property'],contracts:['newContract','New contract']}[S.tab];
-  $('#fabslot').innerHTML=fab&&S.canWrite?`<button class="fab" data-act="${fab[0]}">${ic('plus')}${fab[1]}</button>`:'';
+  const nv=S.nav[S.tab]||{};const lvl0=!nv.pid;
+  const fattrs=S.tab==='contracts'&&nv.pid?` data-prop="${nv.pid}"${nv.uid&&nv.uid!=='_w'?` data-unit="${nv.uid}"`:''}`:'';
+  $('#fabslot').innerHTML=fab&&S.canWrite&&lvl0?`<button class="fab" data-act="${fab[0]}"${fattrs}>${ic('plus')}${fab[1]}</button>`:'';
 }
 function sampleBanner(){const n=S.props.filter(p=>p.sample).length+S.contracts.filter(c=>c.sample).length;if(!n)return '';
   if(S.confirm==='clearSample')return `<div class="banner"><span>Remove all example properties and contracts? Your own records stay.</span><span class="btns"><button class="btn sm danger solid" data-act="clearSample">Remove examples</button><button class="btn sm" data-act="cancelConfirm">Keep</button></span></div>`;
@@ -190,18 +193,82 @@ function payRow(x){const {c,it}=x;const m=methodOf(c,it);const d=diffDays(T,it.d
 function expRow(c){const d=diffDays(T,c.end);return `<button class="row" data-act="openContract" data-id="${c.id}"><span class="stripe pending"></span><span class="main"><span class="t">${esc(pname(c))}${c.sample?'<span class="pill ex">Example</span>':''}</span><span class="s">${esc(c.tenant)} · ${KINDS[c.kind]?.short||''} contract</span><span class="s">Expires ${fmtD(c.end)} · ${milestone(d)}</span></span><span class="end"><span class="amt">${d<=0?'Today':d+' days'}</span><span class="pill expiring">Expiring</span></span></button>`;}
 
 /* ---------- properties ---------- */
+/* ---------- drill-down bubbles (property › unit › details) ---------- */
+S.nav={props:{},contracts:{},payments:{}};
+const UID=x=>x.whole?'_w':x.id;
+const picon=p=>p.cat==='Villa'?'home':'props';
+function navState(tab){const n=S.nav[tab]||(S.nav[tab]={});const p=n.pid?D.props.find(q=>q.id===n.pid):null;
+  if(!p){n.pid=null;n.uid=null;return {n};}
+  let x=n.uid!=null?p.spaces.find(z=>UID(z)===n.uid)||null:null;
+  if(!x&&tab!=='props'&&!p.units.length)x=p.spaces[0];
+  return {n,p,x};}
+function navUp(){const {n,p}=navState(S.tab);if(!p)return false;
+  if(n.uid!=null&&p.units.length){n.uid=null;}else{n.pid=null;n.uid=null;}n.sel=null;S.confirm=null;render();window.scrollTo(0,0);return true;}
+function crumbs(tab,p,x){const all={props:'All properties',contracts:'All contracts',payments:'All payments'}[tab];
+  const deep=x&&p.units.length;
+  const parts=[`<button class="crumb" data-act="nav">${all}</button>`,deep?`<button class="crumb" data-act="nav" data-pid="${p.id}">${esc(p.name)}</button>`:`<span class="crumb on">${esc(p.name)}</span>`];
+  if(deep)parts.push(`<span class="crumb on">${esc(x.whole?'Whole property':x.name)}</span>`);
+  return `<div class="crumbs"><button class="iconbtn sm" data-act="navUp" aria-label="Back">${ic('back')}</button><div class="cpath">${parts.join('<span class="sep">›</span>')}</div></div>`;}
+function bubble({attrs,icon,title,sub,value,label,badges,dim,tone}){
+  return `<button class="bub${dim?' dim':''}${tone?' '+tone:''}" ${attrs}><span class="bub-top"><span class="bub-ic">${ic(icon)}</span>${badges?`<span class="bub-b">${badges}</span>`:''}</span><span class="bub-t">${title}</span>${sub?`<span class="bub-s">${sub}</span>`:''}<span class="bub-v num">${value}</span>${label?`<span class="bub-k">${label}</span>`:''}</button>`;}
+const navAttrs=(p,x)=>`data-act="nav" data-pid="${p.id}"${x?` data-uid="${UID(x)}"`:''}`;
+const spaceName=x=>x.whole?'Whole property':x.name;
+function catChips(){const cats=PCATS.concat([...new Set(D.props.map(p=>p.cat).filter(t=>!PCATS.includes(t)))]);
+  return `<div class="chips" role="group" aria-label="Property type">${['all',...cats].map(t=>`<button class="chip" data-act="f" data-k="ptype" data-v="${esc(t)}" aria-pressed="${S.f.ptype===t}">${t==='all'?'All':esc(t)}</button>`).join('')}</div>`;}
+const catOk=p=>S.f.ptype==='all'||p.cat===S.f.ptype;
+function searchSpaces(q,tab){const L=D.spaces.filter(x=>[x.name,x.pname,x.type,...x.contracts.map(c=>c.tenant+' '+(c.mobile||'')+' '+(c.number||''))].join(' ').toLowerCase().includes(q));
+  if(!L.length)return `<div class="card small muted">Nothing matches “${esc(q)}”.</div>`;
+  return `<div class="small muted" style="margin-bottom:6px">${plural(L.length,'result')}</div><div class="list">${L.map(x=>{const c=x.cur;
+    return `<button class="row" data-act="navTo" data-pid="${x.pid}"${x.whole?'':` data-uid="${x.id}"`}><span class="main"><span class="t">${esc(x.whole?x.pname:x.pname+' › '+x.name)} <span class="pill">${esc(x.type)}</span></span><span class="s">${c?`${esc(c.tenant)} · until ${fmtD(c.end)}`:'Available'}</span></span><span class="end">›</span></button>`;}).join('')}</div>`;}
+
 function vProps(){
   if(!D.props.length)return vHome();
-  const view=S.f.pview;
-  const cats=PCATS.concat([...new Set(D.props.map(p=>p.cat).filter(t=>!PCATS.includes(t)))]);
-  const ut=UTYPES.concat([...new Set(D.spaces.filter(x=>!x.whole).map(x=>x.type).filter(t=>t&&!UTYPES.includes(t)))]);
-  return `<div class="toolbar">
-    <div class="seg" role="group" aria-label="Show">${[['props','Properties'],['units','All units']].map(([k,l])=>`<button data-act="f" data-k="pview" data-v="${k}" aria-pressed="${view===k}">${l}</button>`).join('')}</div>
-    <label class="search">${ic('search')}<input id="pq" type="search" placeholder="Search property, unit, tenant or mobile" value="${esc(S.f.pq)}" data-filter="pq" aria-label="Search properties"></label>
-    ${view==='props'?`<div class="chips" role="group" aria-label="Property type">${['all',...cats].map(t=>`<button class="chip" data-act="f" data-k="ptype" data-v="${esc(t)}" aria-pressed="${S.f.ptype===t}">${t==='all'?'All properties':esc(t)}</button>`).join('')}</div>`
-    :`<div class="chips" role="group" aria-label="Unit type">${['all',...ut].map(t=>`<button class="chip" data-act="f" data-k="utype" data-v="${esc(t)}" aria-pressed="${S.f.utype===t}">${t==='all'?'All unit types':esc(t)}</button>`).join('')}</div>
-    <div class="seg" role="group" aria-label="Occupancy">${[['all','All'],['occ','Occupied'],['free','Available']].map(([k,l])=>`<button data-act="f" data-k="pocc" data-v="${k}" aria-pressed="${S.f.pocc===k}">${l}</button>`).join('')}</div>`}
-  </div><div id="list">${propList()}</div>`;
+  const {p,x}=navState('props');
+  if(!p)return `<div class="toolbar"><label class="search">${ic('search')}<input id="pq" type="search" placeholder="Search property, unit, tenant or mobile" value="${esc(S.f.pq)}" data-filter="pq" aria-label="Search properties"></label>${catChips()}</div><div id="list">${propsTop()}</div>`;
+  if(!x)return crumbs('props',p,null)+propBody(p,'tab');
+  return crumbs('props',p,x)+unitBody(p,x,'tab');
+}
+function propsTop(){
+  const q=S.f.pq.trim().toLowerCase();if(q)return searchSpaces(q,'props');
+  const L=D.props.filter(catOk);if(!L.length)return `<div class="card small muted">No properties of this type.</div>`;
+  return `<div class="bubgrid">${L.map(p=>{const ov=ovCount(p.contracts);const nU=p.units.length;
+    return bubble({attrs:navAttrs(p),icon:picon(p),title:esc(p.name),sub:esc(p.cat)+(nU?' · '+plural(nU,'unit'):'')+(num(p.value)?' · '+money(num(p.value))+'/yr':''),
+      value:nU?`${p.occN} / ${p.spaces.length}`:(p.cur?esc(p.cur.tenant):'Available'),label:nU?'units let':(p.cur?'until '+fmtD(p.cur.end):'No running contract'),
+      badges:ov?`<span class="pill overdue">${ov} overdue</span>`:'',tone:ov?'bad':p.occ?'occ':''});}).join('')}</div>`;
+}
+function unitBubbles(p,scope){
+  return `<div class="bubgrid">${p.spaces.map(x=>{const c=x.cur;const ov=ovCount(x.contracts);
+    const attrs=scope==='tab'?navAttrs(p,x):`data-act="openUnit" data-id="${p.id}" data-u="${x.id}"`;
+    return bubble({attrs,icon:x.whole?picon(p):'unit',title:esc(spaceName(x)),sub:esc(x.whole?p.cat:x.type)+(num(x.value)?' · '+money(num(x.value))+'/yr':''),
+      value:c?esc(c.tenant):'Available',label:c?'until '+fmtD(c.end):(x.contracts.length?plural(x.contracts.length,'past contract'):'No contracts yet'),
+      badges:ov?`<span class="pill overdue">${ov} overdue</span>`:c&&c.st==='expiring'?`<span class="pill expiring">${diffDays(T,c.end)}d left</span>`:'',tone:ov?'bad':c?'occ':''});}).join('')}</div>`;
+}
+function propBody(p,scope){
+  const hasUnits=p.units.length>0;const uv=sum(p.units.map(u=>u.value));const value=num(p.value)||uv;
+  const customers=[...new Set(p.contracts.map(c=>c.tenant))];const h=scope==='tab'?S.nav.props:S.sheet;
+  return `<div class="stack">
+    <div class="btns"><span class="pill kind">${esc(p.cat)}</span>${hasUnits?`<span class="pill ${p.occN===p.spaces.length?'occupied':'partial'}">${p.occN} of ${p.spaces.length} units let</span>`:p.occ?'<span class="pill occupied">Occupied</span>':'<span class="pill">Available</span>'}</div>
+    ${p.location||p.notes?`<div class="small muted">${esc(p.location||'')}${p.location&&p.notes?' · ':''}${esc(p.notes||'')}</div>`:''}
+    ${tiles(p.contracts)}
+    ${valueCard(value,p.contracts,!num(p.value)&&uv>0)}
+    ${hasUnits?`<h2 class="sec">Units · ${p.units.length}${S.canWrite?`<button class="link" data-act="newUnit" data-id="${p.id}">+ Add units</button>`:''}</h2>${unitBubbles(p,scope)}`
+    :`${contractPicker(p.whole,p.cur,`data-prop="${p.id}"`,h,scope)}
+      ${S.canWrite?`<div class="card small"><b>Building or compound?</b> <span class="muted">Add its units (shops, offices, flats…) to manage a contract for each one.</span><div class="btns" style="margin-top:8px"><button class="btn sm" data-act="newUnit" data-id="${p.id}">${ic('plus')}Add units</button></div></div>`:''}`}
+    ${customers.length?`<h2 class="sec">Customers</h2><div class="card small">${customers.map(esc).join(' · ')}</div>`:''}
+    ${S.canWrite?`<div class="btns">${hasUnits?`<button class="btn" data-act="newContract" data-prop="${p.id}">New contract</button>`:''}<button class="btn" data-act="editProp" data-id="${p.id}">Edit property</button><button class="btn danger" data-act="ask" data-v="delProp">Delete property</button></div>
+    ${confirmRow('delProp',`Delete ${esc(p.name)}${p.units.length?`, its ${plural(p.units.length,'unit')}`:''}${p.contracts.length?` and its ${plural(p.contracts.length,'contract')} with all payment records`:''}? This can't be undone.`,'delProp','Delete property',`data-id="${p.id}"`)}`:''}</div>`;
+}
+function unitBody(p,x,scope){
+  const customers=[...new Set(x.contracts.map(c=>c.tenant))];const h=scope==='tab'?S.nav[S.tab]:S.sheet;
+  return `<div class="stack">
+    <div class="btns"><span class="pill kind">${esc(x.whole?'Whole property':x.type)}</span>${x.occ?'<span class="pill occupied">Occupied</span>':'<span class="pill">Available</span>'}<span class="pill">${esc(p.name)}</span></div>
+    ${x.notes?`<div class="small muted">${esc(x.notes)}</div>`:''}
+    ${tiles(x.contracts)}
+    ${x.whole?'':valueCard(x.value,x.contracts,false)}
+    ${contractPicker(x.contracts,x.cur,`data-prop="${p.id}" data-unit="${x.id}"`,h,scope)}
+    ${customers.length?`<h2 class="sec">Customers</h2><div class="card small">${customers.map(esc).join(' · ')}</div>`:''}
+    ${S.canWrite&&!x.whole?`<div class="btns"><button class="btn" data-act="editUnit" data-id="${p.id}" data-u="${x.id}">Edit unit</button><button class="btn danger" data-act="ask" data-v="delUnit">Delete unit</button></div>
+    ${confirmRow('delUnit',x.contracts.length?`${esc(x.name)} has ${plural(x.contracts.length,'contract')}. Delete those contracts first, then delete the unit.`:`Delete ${esc(x.name)}? This can't be undone.`,x.contracts.length?'cancelConfirm':'delUnit',x.contracts.length?'OK':'Delete unit',`data-id="${p.id}" data-u="${x.id}"`)}`:''}</div>`;
 }
 const ovCount=list=>list.reduce((a,c)=>a+c.items.filter(x=>x.st==='overdue').length,0);
 function unitRow(x,inProp){const c=x.cur;const ov=ovCount(x.contracts);
@@ -228,13 +295,45 @@ function propList(){
 }
 
 /* ---------- contracts ---------- */
+const cMatch=c=>(S.f.ckind==='all'||c.kind===S.f.ckind)&&(S.f.cstat==='all'||(S.f.cstat==='running'?running(c):c.st===S.f.cstat));
+const cOrder=(a,b)=>{const r=s=>({expiring:0,active:1,upcoming:2,expired:3,terminated:4}[s]);return r(a.st)-r(b.st)||String(b.start).localeCompare(String(a.start));};
 function vContracts(){
   if(!D.props.length)return vHome();
-  return `<div class="toolbar">
-    <label class="search">${ic('search')}<input id="cq" type="search" placeholder="Search contract no., property or tenant" value="${esc(S.f.cq)}" data-filter="cq" aria-label="Search contracts"></label>
-    <div class="chips" role="group" aria-label="Contract type">${[['all','All types'],...kindList().map(k=>[k,KINDS[k].short])].map(([k,l])=>`<button class="chip" data-act="f" data-k="ckind" data-v="${k}" aria-pressed="${S.f.ckind===k}">${l}</button>`).join('')}</div>
-    <div class="chips" role="group" aria-label="Contract status">${[['all','Any status'],['running','Running'],['expiring','Expiring ≤ 30 days'],['expired','Expired'],['upcoming','Starts later'],['terminated','Ended early']].map(([k,l])=>`<button class="chip" data-act="f" data-k="cstat" data-v="${k}" aria-pressed="${S.f.cstat===k}">${l}</button>`).join('')}</div>
-  </div><div id="list">${contractList()}</div>`;
+  const {p,x}=navState('contracts');
+  const filters=`<div class="chips" role="group" aria-label="Contract type">${[['all','All types'],...kindList().map(k=>[k,KINDS[k].short])].map(([k,l])=>`<button class="chip" data-act="f" data-k="ckind" data-v="${k}" aria-pressed="${S.f.ckind===k}">${l}</button>`).join('')}</div>
+    <div class="chips" role="group" aria-label="Contract status">${[['all','Any status'],['running','Running'],['expiring','Expiring ≤ 30 days'],['expired','Expired'],['upcoming','Starts later'],['terminated','Ended early']].map(([k,l])=>`<button class="chip" data-act="f" data-k="cstat" data-v="${k}" aria-pressed="${S.f.cstat===k}">${l}</button>`).join('')}</div>`;
+  if(!p)return `<div class="toolbar"><label class="search">${ic('search')}<input id="cq" type="search" placeholder="Search contract no., property or tenant" value="${esc(S.f.cq)}" data-filter="cq" aria-label="Search contracts"></label>${filters}</div><div id="list">${contractsTop()}</div>`;
+  if(!x){const all=p.contracts.filter(cMatch);
+    return crumbs('contracts',p,null)+`<div class="toolbar">${filters}</div>
+    <div class="lvlhead"><div class="lh-t"><span class="bub-ic">${ic(picon(p))}</span><div><h2>${esc(p.name)}</h2><div class="small muted">${esc(p.cat)} · ${plural(p.units.length,'unit')}</div></div></div>${contractStats(p.contracts)}</div>
+    <h2 class="sec">Units · ${all.length} ${all.length===1?'contract':'contracts'}</h2>
+    <div class="bubgrid">${p.spaces.map(z=>{const L=z.contracts.filter(cMatch);const exp=L.filter(c=>c.st==='expiring').length;const ov=ovCount(L);
+      return bubble({attrs:navAttrs(p,z),icon:z.whole?picon(p):'unit',title:esc(spaceName(z)),sub:esc(z.whole?p.cat:z.type)+' · '+(z.cur?esc(z.cur.tenant):'Available'),
+        value:String(L.length),label:L.length===1?'contract':'contracts',dim:!L.length,tone:ov?'bad':exp?'warn':z.cur?'occ':'',
+        badges:(exp?`<span class="pill expiring">${exp} expiring</span>`:'')+(ov?`<span class="pill overdue">${ov} overdue</span>`:'')});}).join('')}</div>`;}
+  const L=x.contracts.filter(cMatch).sort(cOrder);
+  return crumbs('contracts',p,x)+`<div class="toolbar">${filters}</div>
+    <div class="lvlhead"><div class="lh-t"><span class="bub-ic">${ic(x.whole?picon(p):'unit')}</span><div><h2>${esc(x.whole?p.name:x.name)}</h2><div class="small muted">${esc(x.whole?p.cat:x.type+' · '+p.name)}${x.cur?' · '+esc(x.cur.tenant):' · Available'}</div></div></div>${contractStats(x.contracts)}
+      ${S.canWrite?`<button class="btn primary" data-act="newContract" data-prop="${p.id}" data-unit="${x.whole?'':x.id}">${ic('plus')}New contract</button>`:''}</div>
+    <h2 class="sec">Contracts · ${L.length}${L.length<x.contracts.length?` of ${x.contracts.length}`:''}</h2>
+    ${L.length?`<div class="stack">${L.map(contractCard).join('')}</div>`:`<div class="card small muted">${x.contracts.length?`No contracts match these filters. <button class="link" data-act="clearCF">Show all</button>`:'No contracts yet.'}</div>`}`;
+}
+function contractStats(list){const run=list.filter(running).length,exp=list.filter(c=>c.st==='expiring').length,old=list.filter(c=>c.st==='expired'||c.st==='terminated').length;
+  return `<div class="sumgrid"><div class="tile"><span class="k">Running</span><span class="v num">${run}</span></div><div class="tile ${exp?'warn':''}"><span class="k">Expiring ≤ 30 days</span><span class="v num">${exp}</span></div><div class="tile"><span class="k">Past</span><span class="v num">${old}</span></div><div class="tile"><span class="k">Total value</span><span class="v sm num">${money(sum(list.map(c=>c.amount)))}</span></div></div>`;}
+function contractCard(c){const pct=num(c.amount)?Math.min(100,c.collected/num(c.amount)*100):0;const d=isD(c.end)?diffDays(T,c.end):0;const ov=c.items.filter(x=>x.st==='overdue').length;
+  return `<button class="ccard" data-act="openContract" data-id="${c.id}">
+    <span class="btns"><span class="pill kind">${KINDS[c.kind]?.short||c.kind}</span><span class="pill ${c.st}">${c.st==='expiring'?(d<=0?'Expires today':d+' days left'):CSTAT[c.st]}</span>${ov?`<span class="pill overdue">${ov} overdue</span>`:''}${c.dep==='held'?'<span class="pill">Deposit held</span>':''}</span>
+    <span class="ccard-t">${esc(c.tenant)}</span>
+    <span class="bub-s">${fmtD(c.start)} → ${fmtD(c.end)}${c.number?' · '+esc(c.number):''}</span>
+    <span class="ccard-row"><span><span class="bub-k">Contract</span><b class="num">${money(num(c.amount))}</b></span><span><span class="bub-k">Collected</span><b class="num" style="color:var(--ok)">${money(c.collected)}</b></span><span><span class="bub-k">Balance</span><b class="num">${money(c.balance)}</b></span></span>
+    <span class="occbar" style="margin-top:2px"><i style="width:${pct}%"></i></span>
+    <span class="ccard-go">Full summary & options ›</span></button>`;}
+function contractsTop(){
+  if(S.f.cq.trim())return contractList();
+  const L=D.props.filter(catOk);
+  return `<div class="bubgrid">${L.map(p=>{const all=p.contracts.filter(cMatch);const run=all.filter(running).length;const exp=all.filter(c=>c.st==='expiring').length;const ov=ovCount(all);
+    return bubble({attrs:navAttrs(p),icon:picon(p),title:esc(p.name),sub:esc(p.cat)+(p.units.length?' · '+plural(p.units.length,'unit'):''),value:String(all.length),label:(all.length===1?'contract':'contracts')+(run?` · ${run} running`:''),
+      dim:!all.length,tone:ov?'bad':exp?'warn':run?'occ':'',badges:(exp?`<span class="pill expiring">${exp} expiring</span>`:'')+(ov?`<span class="pill overdue">${ov} overdue</span>`:'')});}).join('')}</div>`;
 }
 function contractList(){
   const q=S.f.cq.trim().toLowerCase();
@@ -249,14 +348,52 @@ function contractRow(c){const d=isD(c.end)?diffDays(T,c.end):0;const ov=c.items.
   <span class="end"><span class="amt">${money(num(c.amount))}</span><span class="pill ${c.st}">${c.st==='expiring'?(d<=0?'Expires today':d+' days left'):CSTAT[c.st]}</span>${ov?`<span class="pill overdue">${ov} overdue</span>`:''}</span></button>`;}
 
 /* ---------- payments ---------- */
+const PLBL={all:'total',overdue:'overdue',upcoming:'pending',paid:'received'};
+function pMatch(x){const it=x.it,f=S.f;
+  if(f.ystat==='overdue'&&it.st!=='overdue')return false;
+  if(f.ystat==='upcoming'&&!(it.st==='pending'||it.st==='partial'))return false;
+  if(f.ystat==='paid'&&it.st!=='paid')return false;
+  if(f.ymeth!=='all'&&methodOf(x.c,it)!==f.ymeth)return false;
+  if(f.yfrom&&it.due<f.yfrom)return false;if(f.yto&&it.due>f.yto)return false;return true;}
+const payVal=x=>S.f.ystat==='all'||x.it.st==='paid'?num(x.it.amount):x.it.bal;
+function payTotals(list){let tot=0,rec=0,out=0,ov=0;list.forEach(c=>c.items.forEach(it=>{if(it.st==='void')return;tot+=num(it.amount);rec+=it.paid;out+=it.bal;if(it.st==='overdue')ov+=it.bal;}));
+  return `<div class="sumgrid"><div class="tile"><span class="k">Total payments</span><span class="v sm num">${money(tot)}</span></div><div class="tile ok"><span class="k">Received</span><span class="v sm num">${money(rec)}</span></div><div class="tile warn"><span class="k">Outstanding</span><span class="v sm num">${money(out-ov)}</span></div><div class="tile bad"><span class="k">Overdue</span><span class="v sm num">${money(ov)}</span></div></div>
+    <div class="occbar"><i style="width:${tot?Math.min(100,rec/tot*100):0}%"></i></div>`;}
 function vPayments(){
   if(!D.props.length)return vHome();
-  return `<div class="toolbar">
-    <div class="seg" role="group" aria-label="Payment status">${[['overdue','Overdue'],['upcoming','Upcoming'],['paid','Paid'],['all','All']].map(([k,l])=>`<button data-act="f" data-k="ystat" data-v="${k}" aria-pressed="${S.f.ystat===k}">${l}</button>`).join('')}</div>
-    <label class="search">${ic('search')}<input id="yq" type="search" placeholder="Search property, tenant or cheque no." value="${esc(S.f.yq)}" data-filter="yq" aria-label="Search payments"></label>
-    <div class="chips" role="group" aria-label="Payment method">${[['all','All methods'],...Object.entries(METHODS)].map(([k,l])=>`<button class="chip" data-act="f" data-k="ymeth" data-v="${k}" aria-pressed="${S.f.ymeth===k}">${l}</button>`).join('')}</div>
-    <div class="daterange"><label class="fld"><span>Due from</span><input type="date" id="yfrom" value="${esc(S.f.yfrom)}" data-filter="yfrom"></label><label class="fld"><span>Due to</span><input type="date" id="yto" value="${esc(S.f.yto)}" data-filter="yto"></label></div>
-  </div><div id="list">${payList()}</div>`;
+  const {p,x}=navState('payments');
+  const seg=`<div class="seg" role="group" aria-label="Payment status">${[['all','All'],['overdue','Overdue'],['upcoming','Pending'],['paid','Paid']].map(([k,l])=>`<button data-act="f" data-k="ystat" data-v="${k}" aria-pressed="${S.f.ystat===k}">${l}</button>`).join('')}</div>`;
+  const more=`<div class="chips" role="group" aria-label="Payment method">${[['all','All methods'],...Object.entries(METHODS)].map(([k,l])=>`<button class="chip" data-act="f" data-k="ymeth" data-v="${k}" aria-pressed="${S.f.ymeth===k}">${l}</button>`).join('')}</div>
+    <div class="daterange"><label class="fld"><span>Due from</span><input type="date" id="yfrom" value="${esc(S.f.yfrom)}" data-filter="yfrom"></label><label class="fld"><span>Due to</span><input type="date" id="yto" value="${esc(S.f.yto)}" data-filter="yto"></label></div>`;
+  const ps=D.pays.filter(pMatch);
+  if(!p)return `<div class="toolbar">${seg}<label class="search">${ic('search')}<input id="yq" type="search" placeholder="Search property, tenant or cheque no." value="${esc(S.f.yq)}" data-filter="yq" aria-label="Search payments"></label>${more}</div><div id="list">${paymentsTop()}</div>`;
+  if(!x){const mine=ps.filter(y=>y.c.propertyId===p.id);
+    return crumbs('payments',p,null)+`<div class="toolbar">${seg}</div>
+    <div class="lvlhead"><div class="lh-t"><span class="bub-ic">${ic(picon(p))}</span><div><h2>${esc(p.name)}</h2><div class="small muted">${esc(p.cat)} · ${plural(p.units.length,'unit')}</div></div></div>${payTotals(p.contracts)}</div>
+    <h2 class="sec">Units · ${money(sum(mine.map(payVal)))} ${PLBL[S.f.ystat]}</h2>
+    <div class="bubgrid">${p.spaces.map(z=>{const L=ps.filter(y=>z.contracts.includes(y.c));const ov=L.filter(y=>y.it.st==='overdue').length;
+      return bubble({attrs:navAttrs(p,z),icon:z.whole?picon(p):'unit',title:esc(spaceName(z)),sub:esc(z.whole?p.cat:z.type)+' · '+(z.cur?esc(z.cur.tenant):'Available'),
+        value:money(sum(L.map(payVal))),label:`${plural(L.length,'payment')} ${PLBL[S.f.ystat]}`,dim:!L.length,tone:ov?'bad':'',badges:ov?`<span class="pill overdue">${ov} overdue</span>`:''});}).join('')}</div>`;}
+  const groups=x.contracts.slice().sort(cOrder).map(c=>({c,rows:c.items.filter(it=>it.st!=='void'&&pMatch({c,it}))})).filter(g=>g.rows.length);
+  const shown=groups.reduce((a,g)=>a+g.rows.length,0);
+  return crumbs('payments',p,x)+`<div class="toolbar">${seg}</div>
+    <div class="lvlhead"><div class="lh-t"><span class="bub-ic">${ic(x.whole?picon(p):'unit')}</span><div><h2>${esc(x.whole?p.name:x.name)}</h2><div class="small muted">${esc(x.whole?p.cat:x.type+' · '+p.name)}${x.cur?' · '+esc(x.cur.tenant):''}</div></div></div>${payTotals(x.contracts)}</div>
+    <h2 class="sec">Breakdown · ${plural(shown,'payment')}${S.f.ystat!=='all'?' '+PLBL[S.f.ystat]:''}</h2>
+    ${groups.length?groups.map(({c,rows})=>{const paidN=c.items.filter(i=>i.st==='paid').length;
+      return `<div class="pgroup"><button class="pghead" data-act="openContract" data-id="${c.id}"><span class="main"><span class="t">${esc(c.tenant)} <span class="pill kind">${KINDS[c.kind]?.short||''}</span> <span class="pill ${c.st}">${CSTAT[c.st]}</span></span><span class="s">${fmtD(c.start)} → ${fmtD(c.end)} · ${paidN} of ${c.items.length} paid · balance ${money(c.balance)}</span></span><span class="end">›</span></button>
+        <div class="list">${rows.map(it=>payLine(c,it)).join('')}</div></div>`;}).join('')
+    :`<div class="card small muted">${x.contracts.length?`No ${S.f.ystat==='all'?'':PLBL[S.f.ystat]+' '}payments here. <button class="link" data-act="f" data-k="ystat" data-v="all">Show all</button>`:'No contracts for this unit yet.'}</div>`}`;
+}
+function payLine(c,it){const m=methodOf(c,it);const d=diffDays(T,it.due);
+  return `<button class="row" data-act="openPay" data-c="${c.id}" data-i="${it.i}"><span class="stripe ${it.st}"></span><span class="main"><span class="t">${itemLabel(c,it)}</span><span class="s">Due ${fmtD(it.due)} · ${it.st==='paid'?'paid':daysText(d)}</span><span class="s">${m==='cheque'?'Cheque'+(it.chequeNo?' #'+esc(it.chequeNo):''):METHODS[m]}${it.paid>0&&it.st!=='paid'?' · received '+money(it.paid):''}</span></span>
+    <span class="end"><span class="amt">${money(num(it.amount))}</span><span class="pill ${it.st}">${it.st==='overdue'&&it.paid>0?'Overdue · part paid':PSTAT[it.st]}</span></span></button>`;}
+function paymentsTop(){
+  if(S.f.yq.trim())return payList();
+  const ps=D.pays.filter(pMatch);const L=D.props;
+  return `<div class="small muted" style="margin-bottom:8px">${plural(ps.length,'payment')} · <b class="num">${money(sum(ps.map(payVal)))}</b> ${PLBL[S.f.ystat]}</div>
+  <div class="bubgrid">${L.map(p=>{const mine=ps.filter(y=>y.c.propertyId===p.id);const ov=mine.filter(y=>y.it.st==='overdue').length;
+    return bubble({attrs:navAttrs(p),icon:picon(p),title:esc(p.name),sub:esc(p.cat)+(p.units.length?' · '+plural(p.units.length,'unit'):''),value:money(sum(mine.map(payVal))),label:`${plural(mine.length,'payment')} ${PLBL[S.f.ystat]}`,
+      dim:!mine.length,tone:ov?'bad':'',badges:ov?`<span class="pill overdue">${ov} overdue</span>`:''});}).join('')}</div>`;
 }
 function payList(){
   const q=S.f.yq.trim().toLowerCase(),f=S.f;
@@ -429,11 +566,11 @@ function valueCard(value,list,fromUnits){
 }
 function tiles(list){const col=list.reduce((a,c)=>a+c.collected,0),bal=list.reduce((a,c)=>a+c.balance,0),ov=list.reduce((a,c)=>a+c.items.filter(x=>x.st==='overdue').reduce((s,x)=>s+x.bal,0),0);
   return `<div class="grid3"><div class="tile ok"><span class="k">Received</span><span class="v sm num">${money(col)}</span></div><div class="tile warn"><span class="k">Pending</span><span class="v sm num">${money(bal-ov)}</span></div><div class="tile bad"><span class="k">Overdue</span><span class="v sm num">${money(ov)}</span></div></div>`;}
-function contractPicker(list,cur,newAttrs){
-  if(!list.some(c=>c.id===S.sheet.sel))S.sheet.sel=(cur||list[0]||{}).id;
-  const sel=list.find(c=>c.id===S.sheet.sel);
-  const opt=c=>{const on=c.id===S.sheet.sel;const ov=c.items.filter(x=>x.st==='overdue').length;
-    return `<button class="copt${on?' on':''}" data-act="selC" data-id="${c.id}" aria-pressed="${on}"><span class="radio" aria-hidden="true"></span>
+function contractPicker(list,cur,newAttrs,h,scope){
+  h=h||S.sheet;if(!list.some(c=>c.id===h.sel))h.sel=(cur||list[0]||{}).id;
+  const sel=list.find(c=>c.id===h.sel);
+  const opt=c=>{const on=c.id===h.sel;const ov=c.items.filter(x=>x.st==='overdue').length;
+    return `<button class="copt${on?' on':''}" data-act="selC" data-scope="${scope||'sheet'}" data-id="${c.id}" aria-pressed="${on}"><span class="radio" aria-hidden="true"></span>
       <span class="main"><span class="t">${fmtMY(c.start)} – ${fmtMY(c.end)}</span><span class="s">${esc(c.tenant)} · ${KINDS[c.kind]?.short||''} · ${money(num(c.amount))}</span></span>
       <span class="end"><span class="pill ${c.st}">${c===cur?'Current':CSTAT[c.st]}</span>${ov?`<span class="pill overdue">${ov} overdue</span>`:''}</span></button>`;};
   return `<h2 class="sec">All contracts · ${list.length}${S.canWrite?`<button class="link" data-act="newContract" ${newAttrs}>+ New contract</button>`:''}</h2>
@@ -443,34 +580,12 @@ function contractPicker(list,cur,newAttrs){
 }
 function shProp(){
   const p=D.props.find(x=>x.id===S.sheet.id);if(!p)return null;
-  const hasUnits=p.units.length>0;const uv=sum(p.units.map(u=>u.value));const value=num(p.value)||uv;
-  const customers=[...new Set(p.contracts.map(c=>c.tenant))];
-  return {title:esc(p.name),body:`
-    <div class="btns"><span class="pill kind">${esc(p.cat)}</span>${hasUnits?`<span class="pill ${p.occN===p.spaces.length?'occupied':'partial'}">${p.occN} of ${p.spaces.length} units let</span>`:p.occ?'<span class="pill occupied">Occupied</span>':'<span class="pill">Available</span>'}</div>
-    ${p.location||p.notes?`<div class="small muted">${esc(p.location||'')}${p.location&&p.notes?' · ':''}${esc(p.notes||'')}</div>`:''}
-    ${tiles(p.contracts)}
-    ${valueCard(value,p.contracts,!num(p.value)&&uv>0)}
-    ${hasUnits?`<h2 class="sec">Units · ${p.units.length}${S.canWrite?`<button class="link" data-act="newUnit" data-id="${p.id}">+ Add units</button>`:''}</h2>
-      <div class="list">${p.spaces.map(x=>unitRow(x,true)).join('')}</div>`
-    :`${contractPicker(p.whole,p.cur,`data-prop="${p.id}"`)}
-      ${S.canWrite?`<div class="card small"><b>Building or compound?</b> <span class="muted">Add its units (shops, offices, flats…) to manage a contract for each one.</span><div class="btns" style="margin-top:8px"><button class="btn sm" data-act="newUnit" data-id="${p.id}">${ic('plus')}Add units</button></div></div>`:''}`}
-    ${customers.length?`<h2 class="sec">Customers</h2><div class="card small">${customers.map(esc).join(' · ')}</div>`:''}
-    ${S.canWrite?`<div class="btns">${hasUnits?`<button class="btn" data-act="newContract" data-prop="${p.id}">New contract</button>`:''}<button class="btn" data-act="editProp" data-id="${p.id}">Edit property</button><button class="btn danger" data-act="ask" data-v="delProp">Delete property</button></div>
-    ${confirmRow('delProp',`Delete ${esc(p.name)}${p.units.length?`, its ${plural(p.units.length,'unit')}`:''}${p.contracts.length?` and its ${plural(p.contracts.length,'contract')} with all payment records`:''}? This can't be undone.`,'delProp','Delete property',`data-id="${p.id}"`)}`:''}`};
+  return {title:esc(p.name),body:propBody(p,'sheet')};
 }
 function shUnit(){
   const p=D.props.find(x=>x.id===S.sheet.id);if(!p)return null;
   const x=p.spaces.find(y=>y.id===(S.sheet.u||''));if(!x)return null;
-  const customers=[...new Set(x.contracts.map(c=>c.tenant))];
-  return {title:esc(x.whole?p.name+' · Whole':x.name),body:`
-    <div class="btns"><span class="pill kind">${esc(x.whole?'Whole property':x.type)}</span>${x.occ?'<span class="pill occupied">Occupied</span>':'<span class="pill">Available</span>'}<span class="pill">${esc(p.name)}</span></div>
-    ${x.notes?`<div class="small muted">${esc(x.notes)}</div>`:''}
-    ${tiles(x.contracts)}
-    ${x.whole?'':valueCard(x.value,x.contracts,false)}
-    ${contractPicker(x.contracts,x.cur,`data-prop="${p.id}" data-unit="${x.id}"`)}
-    ${customers.length?`<h2 class="sec">Customers</h2><div class="card small">${customers.map(esc).join(' · ')}</div>`:''}
-    ${S.canWrite&&!x.whole?`<div class="btns"><button class="btn" data-act="editUnit" data-id="${p.id}" data-u="${x.id}">Edit unit</button><button class="btn danger" data-act="ask" data-v="delUnit">Delete unit</button></div>
-    ${confirmRow('delUnit',x.contracts.length?`${esc(x.name)} has ${plural(x.contracts.length,'contract')}. Delete those contracts first, then delete the unit.`:`Delete ${esc(x.name)}? This can't be undone.`,x.contracts.length?'cancelConfirm':'delUnit',x.contracts.length?'OK':'Delete unit',`data-id="${p.id}" data-u="${x.id}"`)}`:''}`};
+  return {title:esc(x.whole?p.name+' · Whole':x.name),body:unitBody(p,x,'sheet')};
 }
 function shContract(){
   const c=D.cs.find(x=>x.id===S.sheet.id);if(!c)return null;
@@ -584,6 +699,7 @@ function openContractForm(id,propId,fromId,unitId){
     kindDefaults(S.draft);regen(false);}
   S.draft.deposit=S.draft.deposit||{amount:'',method:'cheque',received:'',refunded:'',notes:''};S.draft.securityDocs=S.draft.securityDocs||[];S.draft.unitId=S.draft.unitId||'';
   if(!S.draft.id&&!S.draft.newId)S.draft.newId=api.newId('contracts');
+  S.draft.fromTab=!S.sheet;
   if(S.sheet&&['prop','unit','contract'].includes(S.sheet.kind))S.stack.push(S.sheet);
   S.sheet={kind:'cform'};S.confirm=null;drawSheet(true);
 }
@@ -674,11 +790,15 @@ document.addEventListener('click',async ev=>{
   if(a==='scrim'){if(ev.target===el)closeSheet();return;}
   if(el.tagName==='A')return;
   switch(a){
-    case 'tab':S.tab=el.dataset.v;try{localStorage.setItem('pd_tab',S.tab);}catch(e){}window.scrollTo(0,0);render();break;
+    case 'tab':if(S.tab===el.dataset.v&&S.nav[S.tab])S.nav[S.tab]={};S.tab=el.dataset.v;try{localStorage.setItem('pd_tab',S.tab);}catch(e){}window.scrollTo(0,0);render();break;
     case 'f':{const k=el.dataset.k;S.f[k]=k==='ryear'?Number(el.dataset.v):el.dataset.v;render();break;}
-    case 'goPay':S.tab='payments';S.f.ystat=el.dataset.v;S.f.ymeth='all';S.f.yfrom='';S.f.yto='';render();window.scrollTo(0,0);break;
-    case 'goPayCheque':S.tab='payments';S.f.ystat='upcoming';S.f.ymeth='cheque';S.f.yfrom=T;S.f.yto=addDays(T,30);render();window.scrollTo(0,0);break;
-    case 'goExpiring':S.tab='contracts';S.f.cstat='expiring';S.f.ckind='all';render();window.scrollTo(0,0);break;
+    case 'nav':S.nav[S.tab]={pid:el.dataset.pid||null,uid:el.dataset.uid!=null?el.dataset.uid:null};S.confirm=null;render();window.scrollTo(0,0);break;
+    case 'navTo':S.nav[S.tab]={pid:el.dataset.pid,uid:el.dataset.uid!=null?el.dataset.uid:null};S.f.pq='';S.f.cq='';S.f.yq='';render();window.scrollTo(0,0);break;
+    case 'navUp':navUp();break;
+    case 'clearCF':S.f.ckind='all';S.f.cstat='all';render();break;
+    case 'goPay':S.nav.payments={};S.tab='payments';S.f.ystat=el.dataset.v;S.f.ymeth='all';S.f.yfrom='';S.f.yto='';render();window.scrollTo(0,0);break;
+    case 'goPayCheque':S.nav.payments={};S.tab='payments';S.f.ystat='upcoming';S.f.ymeth='cheque';S.f.yfrom=T;S.f.yto=addDays(T,30);render();window.scrollTo(0,0);break;
+    case 'goExpiring':S.nav.contracts={};S.tab='contracts';S.f.cstat='expiring';S.f.ckind='all';render();window.scrollTo(0,0);break;
     case 'alerts':openSheet({kind:'alerts'});break;
     case 'settings':openSheet({kind:'settings'});notifPermission().then(r=>{S.notif=r;if(S.sheet?.kind==='settings')drawSheet();});break;
     case 'close':S.stack.length&&['cform','pform','uform'].includes(S.sheet?.kind)?goBack():closeSheet();break;
@@ -688,26 +808,26 @@ document.addEventListener('click',async ev=>{
     case 'goRep':S.tab='reports';S.f.rep=el.dataset.v;render();window.scrollTo(0,0);break;
     case 'addDoc':S.draft.securityDocs.push({type:'cheque',number:'',amount:''});drawSheet();break;
     case 'rmDoc':S.draft.securityDocs.splice(Number(el.dataset.i),1);drawSheet();break;
-    case 'delUnit':{const p=S.props.find(x=>x.id===el.dataset.id);if(!p)break;const units=clean(p.units||[]).filter(u=>u.id!==el.dataset.u);if(await patch('properties/'+p.id,{units,updatedAt:new Date().toISOString()})){toast('Unit deleted');goBack();}break;}
+    case 'delUnit':{const p=S.props.find(x=>x.id===el.dataset.id);if(!p)break;const units=clean(p.units||[]).filter(u=>u.id!==el.dataset.u);if(await patch('properties/'+p.id,{units,updatedAt:new Date().toISOString()})){toast('Unit deleted');if(inSheet)goBack();else{S.nav[S.tab].uid=null;S.confirm=null;render();}}break;}
     case 'depRecv':case 'depRefund':{const c=S.contracts.find(x=>x.id===el.dataset.id);if(!c)break;const dep={...clean(c.deposit||{})};dep[a==='depRecv'?'received':'refunded']=T;if(await patch('contracts/'+c.id,{deposit:dep,updatedAt:new Date().toISOString()}))toast(a==='depRecv'?'Deposit marked as received':'Deposit marked as refunded');break;}
     case 'back':goBack();break;
     case 'openProp':openSheet({kind:'prop',id:el.dataset.id},inSheet);break;
     case 'openContract':openSheet({kind:'contract',id:el.dataset.id},inSheet);break;
     case 'openPay':openSheet({kind:'pay',cid:el.dataset.c,i:Number(el.dataset.i)},inSheet);break;
-    case 'selC':S.sheet.sel=el.dataset.id;S.confirm=null;drawSheet();break;
+    case 'selC':if(el.dataset.scope==='tab'){S.nav[S.tab].sel=el.dataset.id;S.confirm=null;render();}else{S.sheet.sel=el.dataset.id;S.confirm=null;drawSheet();}break;
     case 'newProp':openSheet({kind:'pform'});break;
     case 'editProp':openSheet({kind:'pform',id:el.dataset.id},inSheet);break;
     case 'newContract':if(!S.props.length){openSheet({kind:'pform'});toast('Add a property first.');break;}openContractForm(null,el.dataset.prop,null,el.dataset.unit);break;
     case 'editContract':openContractForm(el.dataset.id);break;
     case 'renew':openContractForm(null,null,el.dataset.id);break;
-    case 'ask':S.confirm=el.dataset.v;drawSheet();break;
-    case 'cancelConfirm':S.confirm=null;S.sheet?drawSheet():render();break;
+    case 'ask':S.confirm=el.dataset.v;inSheet?drawSheet():render();break;
+    case 'cancelConfirm':S.confirm=null;inSheet?drawSheet():render();break;
     case 'askClearSample':S.confirm='clearSample';render();break;
     case 'copy':try{await navigator.clipboard.writeText(el.dataset.v);toast('Copied');}catch(e){toast('Select the number to copy it.');}break;
     case 'regen':regen(!!S.draft.editing);drawSheet();break;
     case 'addRow':{const d=S.draft;const last=d.schedule[d.schedule.length-1];const due=last?addMonths(last.due,1):d.start;d.schedule.push({id:rid(),due,amount:last?last.amount:0,method:d.method,chequeNo:'',chequeDate:d.method==='cheque'?due:'',notes:'',receipts:[]});d.n=d.schedule.length;drawSheet();break;}
     case 'rmRow':{const d=S.draft;const r=d.schedule[Number(el.dataset.i)];if(r&&(r.receipts||[]).length){toast('This row has payments recorded. Remove those first.');break;}d.schedule.splice(Number(el.dataset.i),1);d.n=d.schedule.length;drawSheet();break;}
-    case 'delProp':{const id=el.dataset.id;const cs=S.contracts.filter(c=>c.propertyId===id);for(const c of cs){if(!await del('contracts/'+c.id))return;}if(await del('properties/'+id)){closeSheet();toast('Property deleted');}break;}
+    case 'delProp':{const id=el.dataset.id;const cs=S.contracts.filter(c=>c.propertyId===id);for(const c of cs){if(!await del('contracts/'+c.id))return;}if(await del('properties/'+id)){Object.keys(S.nav).forEach(k=>{if(S.nav[k].pid===id)S.nav[k]={};});S.confirm=null;closeSheet();render();toast('Property deleted');}break;}
     case 'delC':{if(await del('contracts/'+el.dataset.id)){S.stack.length?goBack():closeSheet();toast('Contract deleted');}break;}
     case 'term':{if(await patch('contracts/'+el.dataset.id,{terminated:true,terminatedOn:T,updatedAt:new Date().toISOString()})){S.confirm=null;toast('Contract ended');}break;}
     case 'delReceipt':{const c=S.contracts.find(x=>x.id===S.sheet.cid);if(!c)break;const sch=clean(c.schedule);sch[S.sheet.i].receipts.splice(Number(el.dataset.ri),1);if(await patch('contracts/'+c.id,{schedule:sch,updatedAt:new Date().toISOString()}))toast('Payment removed');break;}
@@ -717,7 +837,7 @@ document.addEventListener('click',async ev=>{
 });
 document.addEventListener('input',ev=>{
   const el=ev.target;
-  if(el.dataset.filter){S.f[el.dataset.filter]=el.value;const L=$('#list');if(L){D=derive();L.innerHTML={props:propList,contracts:contractList,payments:payList}[S.tab]();}return;}
+  if(el.dataset.filter){S.f[el.dataset.filter]=el.value;if(['yfrom','yto'].includes(el.dataset.filter)){render();return;}const L=$('#list');if(L){D=derive();L.innerHTML={props:propsTop,contracts:contractsTop,payments:paymentsTop}[S.tab]();}return;}
   if(!S.draft)return;
   if(el.dataset.dep){S.draft.deposit[el.dataset.dep]=el.value;return;}
   if(el.dataset.doc!==undefined){const x=S.draft.securityDocs[Number(el.dataset.doc)];if(x)x[el.dataset.k]=el.value;return;}
@@ -745,7 +865,7 @@ async function handleSubmit(ev,f){
     const v=num(fd.get('value'));
     const body={...(ex?clean(ex):{}),name,category:String(fd.get('category')),location:String(fd.get('location')||'').trim(),value:v>0?round2(v):null,notes:String(fd.get('notes')||'').trim(),updatedAt:now};delete body.id;if(!ex){body.createdAt=now;body.units=[];}
     if(await put('properties/'+id,body)){toast(ex?'Property saved':'Property added');
-      if(!ex){if(!S.props.some(x=>x.id===id))S.props.push({id,...body});D=derive();S.stack=[];S.sheet=null;openSheet({kind:'prop',id});}
+      if(!ex){if(!S.props.some(x=>x.id===id))S.props.push({id,...body});closeSheet();S.tab='props';S.nav.props={pid:id};render();window.scrollTo(0,0);}
       else if(S.stack.length)goBack();else closeSheet();}
   }
   else if(kind==='unit'){const fd=new FormData(f);const name=String(fd.get('name')||'').trim();if(!name)return;
@@ -769,7 +889,7 @@ async function handleSubmit(ev,f){
     if(!isD(d.start)||!isD(d.end))return err('Enter the start and expiry dates.');if(d.end<d.start)return err('The expiry date is before the start date.');
     if(!d.schedule.length)return err('Add at least one payment row.');if(d.schedule.some(r=>!isD(r.due)))return err('Every payment row needs a due date.');
     const sched=d.schedule.map(r=>({id:r.id||rid(),due:r.due,amount:round2(num(r.amount)),method:r.method||d.method,chequeNo:r.chequeNo||'',chequeDate:r.chequeDate||'',notes:r.notes||'',receipts:r.receipts||[]})).sort((a,b)=>a.due.localeCompare(b.due));
-    const id=d.id||d.newId||api.newId('contracts');const ex=d.id?S.contracts.find(x=>x.id===d.id):null;
+    const id=d.id||d.newId||api.newId('contracts');const fromTab=!!d.fromTab;const ex=d.id?S.contracts.find(x=>x.id===d.id):null;
     const dep=d.deposit||{};const ovl=num(d.originalValue);
     const body={propertyId:d.propertyId,unitId:d.unitId||'',number:String(d.number||'').trim(),kind:d.kind,tenant:String(d.tenant).trim(),mobile:String(d.mobile||'').trim(),start:d.start,end:d.end,
       amount:d.kind==='monthly'?round2(num(d.rent)*sched.length):round2(num(d.amount)),rent:d.kind==='monthly'?num(d.rent):null,method:d.method,n:sched.length,schedule:sched,notes:String(d.notes||'').trim(),
@@ -780,7 +900,8 @@ async function handleSubmit(ev,f){
     if(ex?.sample)body.sample=true;
     if(await put('contracts/'+id,body)){toast(ex?'Contract saved':'Contract created');S.draft=null;
       const top=S.stack[S.stack.length-1];
-      if(top&&(top.kind==='prop'||top.kind==='unit')){S.stack.pop();top.sel=id;S.sheet=top;S.confirm=null;drawSheet(true);}
+      if(fromTab&&!top){closeSheet();if(S.nav[S.tab])S.nav[S.tab].sel=id;render();}
+      else if(top&&(top.kind==='prop'||top.kind==='unit')){S.stack.pop();top.sel=id;S.sheet=top;S.confirm=null;drawSheet(true);}
       else if(top&&top.kind==='contract'){S.stack.pop();S.sheet=top.id===id?top:{kind:'contract',id};drawSheet(true);}
       else{S.stack=[];openSheet(body.unitId?{kind:'unit',id:body.propertyId,u:body.unitId,sel:id}:{kind:'prop',id:body.propertyId,sel:id});}}
   }
@@ -909,7 +1030,7 @@ onNotificationTap(extra=>{if(extra){pendingTap=extra;openPendingTap();}});
 
 /* ---------- Android back button ---------- */
 if(isNative){import('@capacitor/app').then(({App})=>{
-  App.addListener('backButton',()=>{if(S.sheet){S.stack.length?goBack():closeSheet();return;}if(S.dbState==='ok'&&S.tab!=='home'){S.tab='home';render();window.scrollTo(0,0);return;}App.exitApp();});
+  App.addListener('backButton',()=>{if(S.sheet){S.stack.length?goBack():closeSheet();return;}if(S.dbState==='ok'&&navUp())return;if(S.dbState==='ok'&&S.tab!=='home'){S.tab='home';render();window.scrollTo(0,0);return;}App.exitApp();});
   App.addListener('resume',()=>{if(todayStr()!==T)render();scheduleReminders();});
 });}
 window.addEventListener('online',()=>{S.offline=false;if(S.dbState==='ok')render();});
