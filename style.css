@@ -197,3 +197,16 @@ table.rep tfoot td{font-weight:700;border-bottom:0}
 .errbox{font-size:13.5px;background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:9px 11px}
 .okbox{font-size:13.5px;background:var(--ok-soft);color:var(--ok);border-radius:10px;padding:9px 11px}
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+/* contract picker on the property screen */
+.copts{display:flex;flex-direction:column;gap:8px}
+.copt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+.copt .main{flex:1;min-width:0}
+.copt .t{display:block;font-weight:600}
+.copt .s{display:block;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.copt .end{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.copt .radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;display:grid;place-items:center}
+.copt.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:var(--accent-soft)}
+.copt.on .radio{border-color:var(--accent)}
+.copt.on .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.selpanel{border-top:1px solid var(--line);padding-top:14px}
