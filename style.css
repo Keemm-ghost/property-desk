@@ -76,7 +76,7 @@ button.tile:hover{border-color:var(--accent)}
 .occ .v{font-family:var(--f-display);font-size:26px;font-weight:700;line-height:1}
 .occbar{display:flex;height:8px;border-radius:6px;overflow:hidden;background:var(--surface-2);margin-top:12px}
 .occbar i{background:var(--accent)}
-.kinds{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px}
+.kinds{display:grid;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));gap:6px;margin-top:4px}
 .kinds div{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
 .kinds b{font-family:var(--f-display);font-size:20px}
 .kinds span{font-size:11px;color:var(--muted);line-height:1.2;overflow-wrap:anywhere}
@@ -180,7 +180,7 @@ table.rep tfoot td{font-weight:700;border-bottom:0}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--muted)}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 
-#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:500;z-index:80;max-width:calc(100% - 32px)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:500;z-index:80;max-width:calc(100% - 32px)}
 .copyable{user-select:all}
 @media (max-width:380px){.grid3{grid-template-columns:1fr 1fr}.kinds{grid-template-columns:repeat(3,1fr)}}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}}
@@ -210,3 +210,15 @@ table.rep tfoot td{font-weight:700;border-bottom:0}
 .copt.on .radio{border-color:var(--accent)}
 .copt.on .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .selpanel{border-top:1px solid var(--line);padding-top:14px}
+
+/* form sections */
+.fsec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.fsec .fld input,.fsec .fld select{background:var(--bg)}
+.checks{display:flex;gap:20px;flex-wrap:wrap}
+.checks label{display:flex;gap:8px;align-items:center;font-weight:500}
+.checks input{width:20px;height:20px;accent-color:var(--accent)}
+.drow{display:grid;grid-template-columns:1fr 1fr 0.9fr 26px;gap:6px;align-items:end}
+.drow label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);font-weight:600;min-width:0}
+.drow input,.drow select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 6px;font-size:13px;min-width:0}
+.drow .x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;padding-bottom:6px}
+button.card.tile{width:100%}
